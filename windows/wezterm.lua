@@ -5,8 +5,8 @@ local config = wezterm.config_builder()
 -- WSL Ubuntu 를 기본 셸로
 config.default_prog = { 'wsl.exe', '-d', 'Ubuntu', '--cd', '~' }
 
--- 폰트: Monaco 와 가장 비슷한 Windows 기본 폰트
-config.font = wezterm.font_with_fallback { 'Lucida Console', 'Malgun Gothic' }
+-- 폰트: Menlo 기반 Meslo LG M (macOS 터미널 폰트와 가장 비슷)
+config.font = wezterm.font_with_fallback { 'Meslo LG M', 'Malgun Gothic' }
 config.font_size = 12.0
 config.adjust_window_size_when_changing_font_size = false  -- 글자 크기를 바꿔도 창 크기는 그대로
 config.harfbuzz_features = { 'calt=0', 'clig=0', 'liga=0' }

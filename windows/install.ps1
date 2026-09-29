@@ -71,6 +71,36 @@ for ($i = 0; $i -lt $sizes.Count; $i++) {
 foreach ($p in $pngs) { $bw.Write($p) }
 $bw.Close(); $fs.Close()
 
+# 4b) Font: Meslo LG M (Menlo-based, free). Per-user install, no admin needed
+$fontDir = Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\Fonts'
+$fontReg = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Fonts'
+$fontFiles = @{ 'MesloLGM-Regular.ttf' = 'Meslo LG M Regular'; 'MesloLGM-Bold.ttf' = 'Meslo LG M Bold'; 'MesloLGM-Italic.ttf' = 'Meslo LG M Italic'; 'MesloLGM-BoldItalic.ttf' = 'Meslo LG M Bold Italic' }
+$missing = $fontFiles.Keys | Where-Object { -not (Test-Path (Join-Path $fontDir $_)) }
+if ($missing) {
+  Write-Host '>> Installing Meslo LG M font'
+  $fz = Join-Path $env:TEMP 'meslo.zip'; $fx = Join-Path $env:TEMP 'meslo-extract'
+  Invoke-WebRequest -UseBasicParsing 'https://raw.githubusercontent.com/andreberg/Meslo-Font/master/dist/v1.2.1/Meslo%20LG%20v1.2.1.zip' -OutFile $fz
+  if (Test-Path $fx) { Remove-Item $fx -Recurse -Force }
+  Expand-Archive $fz -DestinationPath $fx -Force
+  New-Item -ItemType Directory -Force $fontDir | Out-Null
+  foreach ($n in $fontFiles.Keys) {
+    $src = Get-ChildItem $fx -Recurse -Filter $n | Select-Object -First 1
+    Copy-Item $src.FullName (Join-Path $fontDir $n) -Force
+    New-ItemProperty -Path $fontReg -Name ($fontFiles[$n] + ' (TrueType)') -Value (Join-Path $fontDir $n) -PropertyType String -Force | Out-Null
+  }
+  Remove-Item $fz -Force; Remove-Item $fx -Recurse -Force
+  Add-Type @"
+using System; using System.Runtime.InteropServices;
+public class NacreFont {
+  [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr SendMessageTimeout(IntPtr h, uint m, UIntPtr w, IntPtr l, uint f, uint t, out UIntPtr r);
+  [DllImport("gdi32.dll", CharSet=CharSet.Unicode)] public static extern int AddFontResource(string p);
+}
+"@
+  foreach ($n in $fontFiles.Keys) { [void][NacreFont]::AddFontResource((Join-Path $fontDir $n)) }
+  $r = [UIntPtr]::Zero
+  [void][NacreFont]::SendMessageTimeout([IntPtr]0xffff, 0x001D, [UIntPtr]::Zero, [IntPtr]::Zero, 2, 3000, [ref]$r)
+}
+
 # 5) Windows Terminal profile (iTerm2 colors, keys); skipped if Windows Terminal is missing
 $sp = Get-ChildItem "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal*\LocalState\settings.json" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
 if ($sp) {
@@ -85,7 +115,7 @@ if ($sp) {
   $j.schemes = @($j.schemes | Where-Object name -ne 'iTerm2 Default') + $scheme
   $prof = [pscustomobject]@{
     guid = $wtGuid; name = 'Ubuntu'; commandline = "wsl.exe -d Ubuntu --cd ~"; icon = $ico
-    font = [pscustomobject]@{ face = 'Lucida Console, Malgun Gothic'; size = 12 }
+    font = [pscustomobject]@{ face = 'Meslo LG M, Malgun Gothic'; size = 12 }
     colorScheme = 'iTerm2 Default'; cursorShape = 'filledBox'; opacity = 100; useAcrylic = $false
     scrollbarState = 'hidden'; padding = '6, 4, 6, 4'
   }
