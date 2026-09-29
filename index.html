@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nacre</title>
+<meta name="description" content="Windows 11에서 iTerm 같은 터미널 환경을 한 번에 구성합니다.">
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1a1a1a; --muted: #666; --line: #e3e3e3;
+    --code-bg: #f4f4f5; --accent: #2b6cb0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0d0d0d; --fg: #e8e8e8; --muted: #9a9a9a; --line: #2a2a2a; --code-bg: #1a1a1a; --accent: #6cb2ff; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+  }
+  main { max-width: 640px; margin: 0 auto; padding: 64px 16px 80px; }
+  h1 { font-size: 40px; margin: 0 0 8px; letter-spacing: -0.02em; }
+  h2 { font-size: 18px; margin: 40px 0 12px; }
+  p.lead { color: var(--muted); margin: 0; font-size: 18px; }
+  .cmd {
+    display: flex; gap: 8px; align-items: stretch; margin-top: 16px;
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+  }
+  .cmd code {
+    flex: 1; padding: 14px 16px; overflow-x: auto; white-space: nowrap;
+    font: 14px/1.4 Consolas, "Lucida Console", monospace;
+  }
+  .cmd button {
+    border: 0; border-left: 1px solid var(--line); background: transparent; color: var(--accent);
+    padding: 0 16px; font: inherit; cursor: pointer; border-radius: 0 8px 8px 0;
+  }
+  .cmd button:hover { background: var(--line); }
+  ul { padding-left: 20px; margin: 0; }
+  li { margin: 4px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 8px 4px; border-bottom: 1px solid var(--line); }
+  kbd { font: 13px Consolas, monospace; background: var(--code-bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; }
+  a { color: var(--accent); }
+  footer { margin-top: 48px; color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Nacre</h1>
+  <p class="lead">Windows 11에서 iTerm 같은 터미널 환경을 한 번에 구성합니다.</p>
+
+  <h2>설치</h2>
+  <p>PowerShell에서 실행하세요. 재부팅 안내가 나오면 재부팅 후 같은 명령을 다시 실행합니다.</p>
+  <div class="cmd">
+    <code id="cmd">irm https://nhahan.github.io/nacre/install.ps1 | iex</code>
+    <button id="copy" type="button">복사</button>
+  </div>
+
+  <h2>포함 항목</h2>
+  <ul>
+    <li>WSL2 (Ubuntu) + WezTerm</li>
+    <li>zsh (자동완성, 문법 강조, git 브랜치 표시 프롬프트)</li>
+    <li>Node.js, tmux</li>
+  </ul>
+
+  <h2>단축키</h2>
+  <table>
+    <tr><td>화면 좌우 분할</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd></td></tr>
+    <tr><td>화면 상하 분할</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>H</kbd></td></tr>
+    <tr><td>분할 화면 이동</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+방향키</td></tr>
+    <tr><td>탭 이동</td><td><kbd>Alt</kbd>+<kbd>1</kbd>~<kbd>9</kbd></td></tr>
+    <tr><td>줄바꿈</td><td><kbd>Shift</kbd>+<kbd>Enter</kbd></td></tr>
+  </table>
+
+  <footer><a href="https://github.com/Nhahan/nacre">GitHub</a></footer>
+</main>
+<script>
+  document.getElementById('copy').addEventListener('click', function (e) {
+    var text = document.getElementById('cmd').textContent;
+    var btn = e.currentTarget;
+    function done() { btn.textContent = '복사됨'; setTimeout(function () { btn.textContent = '복사'; }, 1500); }
+    try { navigator.clipboard.writeText(text).then(done, function () {}); } catch (err) {}
+  });
+</script>
+</body>
+</html>
