@@ -8,6 +8,7 @@ config.default_prog = { 'wsl.exe', '-d', 'Ubuntu', '--cd', '~' }
 -- 폰트: Monaco 와 가장 비슷한 Windows 기본 폰트
 config.font = wezterm.font_with_fallback { 'Lucida Console', 'Malgun Gothic' }
 config.font_size = 12.0
+config.adjust_window_size_when_changing_font_size = false  -- 글자 크기를 바꿔도 창 크기는 그대로
 config.harfbuzz_features = { 'calt=0', 'clig=0', 'liga=0' }
 
 -- iTerm2 Default 색상
@@ -176,6 +177,20 @@ equalize_panes = function(window)
 end
 
 wezterm.on('window-resized', function(window, pane) equalize_panes(window) end)
+
+-- Ctrl + 마우스 휠: 글자 크기 조절
+config.mouse_bindings = {
+  {
+    event = { Down = { streak = 1, button = { WheelUp = 1 } } },
+    mods = 'CTRL',
+    action = act.IncreaseFontSize,
+  },
+  {
+    event = { Down = { streak = 1, button = { WheelDown = 1 } } },
+    mods = 'CTRL',
+    action = act.DecreaseFontSize,
+  },
+}
 
 -- 탭바의 [+] 버튼: 좌클릭 = 새 탭, 우클릭 = 메뉴
 wezterm.on('new-tab-button-click', function(window, pane, button, default_action)
