@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Nacre</title>
-<meta name="description" content="Windows 11에서 macOS iTerm 같은 터미널 환경을 구성합니다.">
+<meta name="description" content="A macOS iTerm-like terminal setup for Windows 11.">
 <style>
   :root {
     --bg: #ffffff; --fg: #1a1a1a; --muted: #666; --line: #e3e3e3;
@@ -52,53 +52,53 @@
 <body>
 <main>
   <h1>Nacre</h1>
-  <p class="lead">Windows 11에서 macOS iTerm 같은 터미널 환경을 구성합니다.</p>
-  <p class="lead sub">WSL(Ubuntu) 기반입니다. WSL이 없으면 함께 설치하고, 이미 있으면 그대로 사용합니다.</p>
+  <p class="lead">A macOS iTerm-like terminal setup for Windows 11.</p>
+  <p class="lead sub">Built on WSL (Ubuntu). If WSL is not installed, it is installed for you; if it already is, it is used as is.</p>
 
-  <h2>설치</h2>
-  <p>PowerShell에서 실행하세요.</p>
+  <h2>Install</h2>
+  <p>Run in PowerShell:</p>
   <div class="cmd">
     <code id="cmd">irm https://nhahan.github.io/nacre/install.ps1 | iex</code>
-    <button id="copy" type="button">복사</button>
+    <button id="copy" type="button">Copy</button>
   </div>
 
-  <h2>기능</h2>
+  <h2>Features</h2>
   <ul class="feat">
     <li>
-      <strong>화면 좌우 분할</strong> <span class="how">Ctrl+Shift+V</span>
-      <img src="assets/split-v.gif" alt="화면을 좌우로 분할" loading="lazy">
+      <strong>Split pane left/right</strong> <span class="how">Ctrl+Shift+V</span>
+      <img src="assets/split-v.gif" alt="Split pane left/right" loading="lazy">
     </li>
     <li>
-      <strong>화면 상하 분할</strong> <span class="how">Ctrl+Shift+H</span>
-      <img src="assets/split-h.gif" alt="화면을 위아래로 분할" loading="lazy">
+      <strong>Split pane top/bottom</strong> <span class="how">Ctrl+Shift+H</span>
+      <img src="assets/split-h.gif" alt="Split pane top/bottom" loading="lazy">
     </li>
     <li>
-      <strong>분할 화면 이동</strong> <span class="how">Ctrl+Shift+방향키</span>
-      <img src="assets/pane-move.gif" alt="분할된 화면 사이 이동" loading="lazy">
+      <strong>Move between panes</strong> <span class="how">Ctrl+Shift+Arrow keys</span>
+      <img src="assets/pane-move.gif" alt="Move between panes" loading="lazy">
     </li>
     <li>
-      <strong>새 창·분할·닫기 메뉴</strong> <span class="how">탭바 + 버튼 우클릭</span>
-      <img src="assets/menu.gif" alt="탭바 + 버튼 우클릭 메뉴" loading="lazy">
+      <strong>New window / split / close menu</strong> <span class="how">Right-click the tab bar + button</span>
+      <img src="assets/menu.gif" alt="Menu on right-click of the tab bar + button" loading="lazy">
     </li>
     <li>
-      <strong>복사 / 붙여넣기</strong> <span class="how">Ctrl+C / Ctrl+V</span>
-      <img src="assets/copy-paste.gif" alt="선택한 글자 복사 후 붙여넣기" loading="lazy">
+      <strong>Copy / Paste</strong> <span class="how">Ctrl+C / Ctrl+V</span>
+      <img src="assets/copy-paste.gif" alt="Copy selected text and paste it" loading="lazy">
     </li>
     <li>
-      <strong>글자 크기 조절</strong> <span class="how">Ctrl+마우스 휠</span>
-      <img src="assets/font-size.gif" alt="Ctrl+마우스 휠로 글자 크기 조절" loading="lazy">
+      <strong>Change font size</strong> <span class="how">Ctrl+Mouse wheel</span>
+      <img src="assets/font-size.gif" alt="Change font size with Ctrl+Mouse wheel" loading="lazy">
     </li>
     <li>
-      <strong>줄바꿈</strong> <span class="how">Shift+Enter</span>
-      <img src="assets/shift-enter.gif" alt="Shift+Enter로 여러 줄 입력" loading="lazy">
+      <strong>New line</strong> <span class="how">Shift+Enter</span>
+      <img src="assets/shift-enter.gif" alt="Multi-line input with Shift+Enter" loading="lazy">
     </li>
     <li>
-      <strong>탭 이동</strong> <span class="how">Alt+1~9</span>
-      <img src="assets/tabs.gif" alt="Alt+숫자로 탭 이동" loading="lazy">
+      <strong>Switch tabs</strong> <span class="how">Alt+1~9</span>
+      <img src="assets/tabs.gif" alt="Switch tabs with Alt+number" loading="lazy">
     </li>
     <li>
-      <strong>폴더·파일·URL을 Windows에서 열기</strong> <span class="how">open 명령</span>
-      <img src="assets/open.gif" alt="open . 으로 탐색기 열기" loading="lazy">
+      <strong>Open folders, files, URLs in Windows</strong> <span class="how">open command</span>
+      <img src="assets/open.gif" alt="Open Explorer with open ." loading="lazy">
     </li>
   </ul>
 
@@ -108,7 +108,7 @@
   document.getElementById('copy').addEventListener('click', function (e) {
     var text = document.getElementById('cmd').textContent;
     var btn = e.currentTarget;
-    function done() { btn.textContent = '복사됨'; setTimeout(function () { btn.textContent = '복사'; }, 1500); }
+    function done() { btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = 'Copy'; }, 1500); }
     try { navigator.clipboard.writeText(text).then(done, function () {}); } catch (err) {}
   });
 </script>
