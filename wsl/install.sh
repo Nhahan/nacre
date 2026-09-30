@@ -1,35 +1,46 @@
 #!/usr/bin/env bash
-# WSL(Ubuntu) 안에서 실행: zsh / oh-my-zsh / Node / tmux 설정
+# Runs inside WSL (Ubuntu/Debian based): zsh, oh-my-zsh, Node.js (nvm), tmux and the Nacre dotfiles.
 set -e
-export DEBIAN_FRONTEND=noninteractive
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd ~
 
-sudo apt-get update -y
-sudo apt-get install -y zsh git curl wget tmux build-essential unzip fzf ripgrep jq xclip python3 gh
+sudo DEBIAN_FRONTEND=noninteractive apt-get update
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y zsh git curl ca-certificates tmux fzf
 
-# oh-my-zsh + 플러그인
+# Keep the user's original files once (never overwrite an existing backup)
+backup_once() {
+  if [ -f "$1" ] && [ ! -L "$1" ] && [ ! -e "$1.nacre-bak" ]; then cp "$1" "$1.nacre-bak"; fi
+  return 0
+}
+backup_once ~/.zshrc
+backup_once ~/.tmux.conf
+
+# oh-my-zsh + plugins
 if [ ! -d ~/.oh-my-zsh ]; then
-  RUNZSH=no CHSH=no sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+  RUNZSH=no CHSH=no KEEP_ZSHRC=yes sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
 fi
 ZC=~/.oh-my-zsh/custom/plugins
-[ -d $ZC/zsh-autosuggestions ] || git clone --depth 1 https://github.com/zsh-users/zsh-autosuggestions $ZC/zsh-autosuggestions
-[ -d $ZC/zsh-syntax-highlighting ] || git clone --depth 1 https://github.com/zsh-users/zsh-syntax-highlighting $ZC/zsh-syntax-highlighting
-sudo chsh -s "$(which zsh)" "$USER"
+[ -d "$ZC/zsh-autosuggestions" ] || git clone --depth 1 https://github.com/zsh-users/zsh-autosuggestions "$ZC/zsh-autosuggestions"
+[ -d "$ZC/zsh-syntax-highlighting" ] || git clone --depth 1 https://github.com/zsh-users/zsh-syntax-highlighting "$ZC/zsh-syntax-highlighting"
 
-# nvm + Node LTS
+# zsh as the login shell
+ME="$(id -un)"
+if [ "$(getent passwd "$ME" | cut -d: -f7)" != "$(command -v zsh)" ]; then
+  sudo chsh -s "$(command -v zsh)" "$ME"
+fi
+
+# nvm + Node.js LTS
 export NVM_DIR="$HOME/.nvm"
-[ -d "$NVM_DIR" ] || curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | PROFILE=/dev/null bash
+[ -d "$NVM_DIR" ] || curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.8/install.sh | PROFILE=/dev/null bash
 . "$NVM_DIR/nvm.sh"
 nvm install --lts
 nvm alias default 'lts/*'
 
 mkdir -p ~/code
 
-# dotfiles 연결 (저장소가 홈 아래면 심볼릭 링크, 아니면 복사). 기존 파일은 .bak 백업
+# Dotfiles: symlink when the repo lives under $HOME (edits apply immediately), otherwise copy
 link() {
   local src="$1" dst="$2"
-  if [ -e "$dst" ] && [ ! -L "$dst" ]; then cp "$dst" "$dst.bak"; fi
   rm -f "$dst"
   case "$HERE" in
     "$HOME"/*) ln -s "$src" "$dst" ;;
@@ -39,9 +50,6 @@ link() {
 link "$HERE/zshrc" ~/.zshrc
 link "$HERE/tmux.conf" ~/.tmux.conf
 
-git config --global init.defaultBranch main
-git config --global core.autocrlf input
-
 echo "=== versions ==="
 node -v; npm -v; zsh --version; tmux -V
-echo "DONE. 새 터미널을 여세요."
+echo "Done. Open a new terminal."

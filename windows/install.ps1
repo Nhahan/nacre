@@ -1,49 +1,111 @@
-# Windows side setup: WSL2 + Ubuntu (only if missing), WezTerm, Windows Terminal profile, icon, desktop shortcut.
-# Run in Windows PowerShell (5.1 OK). If WSL is not installed it is installed first
-# (admin + reboot needed); after the reboot run this script again. An existing Ubuntu is reused as is.
+# Nacre - Windows side setup.
+# Installs only what is missing (WSL2 + Ubuntu, WezTerm, Meslo LG M font), then writes the WezTerm
+# config, a Windows Terminal profile and a desktop shortcut, and runs wsl\install.sh inside WSL.
+# Run in Windows PowerShell 5.1+. Installing WSL needs admin rights and may need a reboot:
+# reboot, then run this script again. An existing Ubuntu distro is reused as is.
 $ErrorActionPreference = 'Stop'
-$root   = Split-Path -Parent $MyInvocation.MyCommand.Path
-$repo   = Split-Path -Parent $root
-$user   = $env:USERNAME.ToLower()
+$ProgressPreference = 'SilentlyContinue'
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+
+$root    = Split-Path -Parent $MyInvocation.MyCommand.Path
+$repo    = Split-Path -Parent $root
 $iconDir = Join-Path $env:USERPROFILE '.wsl-icon'
-$ico    = Join-Path $iconDir 'iterm-like.ico'
-$wtGuid = '{a1b2c3d4-0000-4000-8000-00000000ab01}'
+$ico     = Join-Path $iconDir 'iterm-like.ico'
+$wtGuid  = '{a1b2c3d4-0000-4000-8000-00000000ab01}'
+$wezGui  = 'C:\Program Files\WezTerm\wezterm-gui.exe'
 
-function Wsl-Text { param([string[]]$a) (& wsl.exe @a 2>&1 | Out-String) -replace "`0", '' }
-
-# 1) WSL2 + Ubuntu: reuse an existing Ubuntu distro, install WSL + Ubuntu only when none exists
+# wsl.exe writes to stderr on errors; with $ErrorActionPreference = 'Stop' that would abort the script
+function Wsl-Text {
+  param([string[]]$a)
+  $old = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  try { (& wsl.exe @a 2>&1 | Out-String) -replace "`0", '' } finally { $ErrorActionPreference = $old }
+}
+function Wsl-Run {
+  param([string[]]$a)
+  $old = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  try { & wsl.exe @a | Out-Host; $LASTEXITCODE } finally { $ErrorActionPreference = $old }
+}
+function Test-Admin {
+  ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+# Windows user names may contain spaces, dots, capitals or non-ASCII; Linux user names may not
+function ConvertTo-LinuxUser([string]$name) {
+  $u = ($name.ToLower() -replace '[^a-z0-9_-]', '_')
+  if ($u -notmatch '[a-z0-9]') { return 'user' }
+  if ($u -notmatch '^[a-z_]') { $u = "u$u" }
+  if ($u.Length -gt 32) { $u = $u.Substring(0, 32) }
+  $u
+}
 function Find-Distro {
   (Wsl-Text @('-l', '-q')) -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '^Ubuntu' } | Select-Object -First 1
 }
+
+if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) {
+  throw 'wsl.exe was not found. Nacre needs Windows 10 version 2004 (build 19041) or later, or Windows 11.'
+}
+
+# 1) WSL2 + Ubuntu: reuse an existing Ubuntu distro, install WSL + Ubuntu only when none exists
 $distro = Find-Distro
 if ($distro) {
   Write-Host ">> WSL distro '$distro' found, skipping WSL install"
 } else {
-  Write-Host '>> WSL/Ubuntu not found, installing (admin required; reboot may be needed)'
-  wsl.exe --install -d Ubuntu --no-launch
+  Write-Host '>> WSL/Ubuntu not found, installing (admin required; a reboot may be needed)'
+  try {
+    if (Test-Admin) { [void](Wsl-Run @('--install', '-d', 'Ubuntu', '--no-launch')) }
+    else { Start-Process wsl.exe -ArgumentList '--install', '-d', 'Ubuntu', '--no-launch' -Verb RunAs -Wait }
+  } catch {
+    throw "WSL installation was cancelled or failed: $($_.Exception.Message)"
+  }
   $distro = Find-Distro
   if (-not $distro) {
-    Write-Host 'Reboot Windows, then run this script again.' -ForegroundColor Yellow
-    exit 0
+    Write-Host 'WSL was installed. Reboot Windows, then run this script again.' -ForegroundColor Yellow
+    return
   }
 }
 
-# 2) Passwordless default user (same name as the Windows user)
-$hasUser = (Wsl-Text @('-d', $distro, '-u', 'root', '--', 'id', '-u', $user)) -match '^\d+'
-if (-not $hasUser) {
+# 2) A freshly installed distro has only root: create a passwordless user named like the Windows user.
+#    An existing distro with its own user is left untouched.
+$current = (Wsl-Text @('-d', $distro, '--', 'id', '-un')).Trim()
+if ($current -notmatch '^[a-z_][a-z0-9_-]*\$?$') {
+  throw "Cannot run commands in WSL distro '$distro' (got: $current). Start it once with: wsl -d $distro"
+}
+if ($current -eq 'root') {
+  $user = ConvertTo-LinuxUser $env:USERNAME
   Write-Host ">> Creating WSL user '$user' (no password, passwordless sudo)"
-  $s = "useradd -m -s /bin/bash -G sudo $user && passwd -d $user && echo '$user ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/$user && chmod 440 /etc/sudoers.d/$user && printf '[user]\ndefault=$user\n' > /etc/wsl.conf"
-  wsl.exe -d $distro -u root -- bash -c $s | Out-Null
-  wsl.exe --terminate $distro
+  $tmpSh = Join-Path $env:TEMP 'nacre-create-user.sh'
+  $sh = @'
+set -e
+u="__USER__"
+id "$u" >/dev/null 2>&1 || useradd -m -s /bin/bash -G sudo "$u"
+passwd -d "$u" >/dev/null
+echo "$u ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/nacre-$u"
+chmod 440 "/etc/sudoers.d/nacre-$u"
+grep -q '^\[user\]' /etc/wsl.conf 2>/dev/null || printf '\n[user]\ndefault=%s\n' "$u" >> /etc/wsl.conf
+'@.Replace('__USER__', $user).Replace("`r", '')
+  [IO.File]::WriteAllText($tmpSh, $sh, (New-Object Text.UTF8Encoding $false))
+  $code = Wsl-Run @('-d', $distro, '-u', 'root', '--cd', $env:TEMP, '--', 'bash', './nacre-create-user.sh')
+  Remove-Item -LiteralPath $tmpSh -Force -ErrorAction SilentlyContinue
+  if ($code -ne 0) { throw "Creating the WSL user failed (exit code $code)." }
+  [void](Wsl-Run @('--terminate', $distro))
+} else {
+  Write-Host ">> Using the existing WSL user '$current'"
 }
 
 # 3) WezTerm
-if (-not (Test-Path 'C:\Program Files\WezTerm\wezterm-gui.exe')) {
+if (-not (Test-Path $wezGui)) {
+  if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+    throw 'winget was not found. Install WezTerm from https://wezterm.org/install/windows.html and run this script again.'
+  }
   Write-Host '>> Installing WezTerm via winget'
   winget install --id wez.wezterm -e --accept-source-agreements --accept-package-agreements
+  if ($LASTEXITCODE -ne 0 -or -not (Test-Path $wezGui)) { throw 'WezTerm installation failed.' }
 }
-$lua = (Get-Content (Join-Path $root 'wezterm.lua') -Raw -Encoding UTF8).Replace("'-d', 'Ubuntu'", "'-d', '$distro'")
-[IO.File]::WriteAllText((Join-Path $env:USERPROFILE '.wezterm.lua'), $lua, (New-Object Text.UTF8Encoding $false))
+$lua    = (Get-Content (Join-Path $root 'wezterm.lua') -Raw -Encoding UTF8).Replace("'-d', 'Ubuntu'", "'-d', '$distro'")
+$luaDst = Join-Path $env:USERPROFILE '.wezterm.lua'
+if ((Test-Path $luaDst) -and -not (Test-Path "$luaDst.bak-nacre") -and ((Get-Content $luaDst -Raw -Encoding UTF8) -ne $lua)) {
+  Copy-Item $luaDst "$luaDst.bak-nacre"   # keep the user's original config once
+}
+[IO.File]::WriteAllText($luaDst, $lua, (New-Object Text.UTF8Encoding $false))
 
 # 4) Icon (generated locally, no download)
 Add-Type -AssemblyName System.Drawing
@@ -77,15 +139,22 @@ for ($i = 0; $i -lt $sizes.Count; $i++) {
 foreach ($p in $pngs) { $bw.Write($p) }
 $bw.Close(); $fs.Close()
 
-# 4b) Font: Meslo LG M (Menlo-based, free). Per-user install, no admin needed
-$fontDir = Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\Fonts'
-$fontReg = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Fonts'
+# 4b) Font: Meslo LG M (Menlo-based, free). Per-user install, no admin needed.
+#     The download is pinned to a commit and verified against a SHA-256 hash.
+$fontDir   = Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\Fonts'
+$fontReg   = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Fonts'
+$fontUrl   = 'https://raw.githubusercontent.com/andreberg/Meslo-Font/09a431d546d211130352c28eb0466e5d7d5aeaf0/dist/v1.2.1/Meslo%20LG%20v1.2.1.zip'
+$fontSha   = 'D0BCB7668DDA8FA1A0F8162D626ADB434C32854E243B5BD52A717CF569AF08D0'
 $fontFiles = @{ 'MesloLGM-Regular.ttf' = 'Meslo LG M Regular'; 'MesloLGM-Bold.ttf' = 'Meslo LG M Bold'; 'MesloLGM-Italic.ttf' = 'Meslo LG M Italic'; 'MesloLGM-BoldItalic.ttf' = 'Meslo LG M Bold Italic' }
 $missing = $fontFiles.Keys | Where-Object { -not (Test-Path (Join-Path $fontDir $_)) }
 if ($missing) {
   Write-Host '>> Installing Meslo LG M font'
   $fz = Join-Path $env:TEMP 'meslo.zip'; $fx = Join-Path $env:TEMP 'meslo-extract'
-  Invoke-WebRequest -UseBasicParsing 'https://raw.githubusercontent.com/andreberg/Meslo-Font/master/dist/v1.2.1/Meslo%20LG%20v1.2.1.zip' -OutFile $fz
+  Invoke-WebRequest -UseBasicParsing $fontUrl -OutFile $fz
+  if ((Get-FileHash $fz -Algorithm SHA256).Hash -ne $fontSha) {
+    Remove-Item -LiteralPath $fz -Force
+    throw 'Font download failed the SHA-256 check; not installing it.'
+  }
   if (Test-Path $fx) { Remove-Item $fx -Recurse -Force }
   Expand-Archive $fz -DestinationPath $fx -Force
   New-Item -ItemType Directory -Force $fontDir | Out-Null
@@ -94,7 +163,7 @@ if ($missing) {
     Copy-Item $src.FullName (Join-Path $fontDir $n) -Force
     New-ItemProperty -Path $fontReg -Name ($fontFiles[$n] + ' (TrueType)') -Value (Join-Path $fontDir $n) -PropertyType String -Force | Out-Null
   }
-  Remove-Item $fz -Force; Remove-Item $fx -Recurse -Force
+  Remove-Item -LiteralPath $fz -Force; Remove-Item $fx -Recurse -Force
   Add-Type @"
 using System; using System.Runtime.InteropServices;
 public class NacreFont {
@@ -107,60 +176,59 @@ public class NacreFont {
   [void][NacreFont]::SendMessageTimeout([IntPtr]0xffff, 0x001D, [UIntPtr]::Zero, [IntPtr]::Zero, 2, 3000, [ref]$r)
 }
 
-# 5) Windows Terminal profile (iTerm2 colors, keys); skipped if Windows Terminal is missing
-$sp = Get-ChildItem "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal*\LocalState\settings.json" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
-if ($sp) {
-  Write-Host '>> Patching Windows Terminal settings (backup: settings.json.bak-dotfiles)'
-  Copy-Item $sp "$sp.bak-dotfiles" -Force
-  $j = Get-Content $sp -Raw | ConvertFrom-Json
+# 5) Windows Terminal: adds an "Ubuntu (Nacre)" profile and the iTerm2 color scheme.
+#    Nothing else (default profile, key bindings, other profiles) is changed.
+function Update-WindowsTerminal([string]$sp) {
+  try { $j = Get-Content $sp -Raw -Encoding UTF8 | ConvertFrom-Json }
+  catch {
+    Write-Warning 'Windows Terminal settings.json could not be parsed (comments?). Skipping the Windows Terminal profile.'
+    return
+  }
+  if (-not (Test-Path "$sp.bak-nacre")) { Copy-Item $sp "$sp.bak-nacre" }   # keep the original once
   $scheme = [pscustomobject]@{
     name = 'iTerm2 Default'; background = '#000000'; foreground = '#C7C7C7'; cursorColor = '#C7C7C7'; selectionBackground = '#C1DDFF'
     black = '#000000'; red = '#C91B00'; green = '#00C200'; yellow = '#C7C400'; blue = '#2225C4'; purple = '#CA30C7'; cyan = '#00C5C7'; white = '#C7C7C7'
     brightBlack = '#686868'; brightRed = '#FF6E67'; brightGreen = '#5FFA68'; brightYellow = '#FFFC67'; brightBlue = '#6871FF'; brightPurple = '#FF77FF'; brightCyan = '#60FDFF'; brightWhite = '#FFFFFF'
   }
-  $j.schemes = @($j.schemes | Where-Object name -ne 'iTerm2 Default') + $scheme
+  $schemes = @()
+  if ($j.PSObject.Properties['schemes']) { $schemes = @($j.schemes | Where-Object { $_.name -ne 'iTerm2 Default' }) }
+  $j | Add-Member -NotePropertyName schemes -NotePropertyValue (@($schemes) + @($scheme)) -Force
+
   $prof = [pscustomobject]@{
-    guid = $wtGuid; name = 'Ubuntu'; commandline = "wsl.exe -d $distro --cd ~"; icon = $ico
+    guid = $wtGuid; name = 'Ubuntu (Nacre)'; commandline = "wsl.exe -d $distro --cd ~"; icon = $ico
     font = [pscustomobject]@{ face = 'Meslo LG M, Malgun Gothic'; size = 12 }
     colorScheme = 'iTerm2 Default'; cursorShape = 'filledBox'; opacity = 100; useAcrylic = $false
     scrollbarState = 'hidden'; padding = '6, 4, 6, 4'
   }
-  $j.profiles.list = @($prof) + @($j.profiles.list | Where-Object guid -ne $wtGuid)
-  foreach ($p in $j.profiles.list) { if ($p.source -eq 'Microsoft.WSL') { $p | Add-Member -NotePropertyName hidden -NotePropertyValue $true -Force } }
-  $j.defaultProfile = $wtGuid
-  foreach ($kv in @{ copyOnSelect = $true; tabWidthMode = 'titleLength'; confirmCloseAllTabs = $false; 'warning.multiLinePaste' = $false }.GetEnumerator()) {
-    $j | Add-Member -NotePropertyName $kv.Key -NotePropertyValue $kv.Value -Force
+  if (-not $j.PSObject.Properties['profiles'] -or -not $j.profiles) {
+    $j | Add-Member -NotePropertyName profiles -NotePropertyValue ([pscustomobject]@{ list = @() }) -Force
   }
-  function A($keys, $cmd) { [pscustomobject]@{ command = $cmd; keys = $keys } }
-  $j.actions = @(
-    (A 'shift+enter' ([pscustomobject]@{ action = 'sendInput'; input = "$([char]27)`r" })),
-    (A 'ctrl+shift+v' ([pscustomobject]@{ action = 'splitPane'; split = 'right'; splitMode = 'duplicate' })),
-    (A 'ctrl+shift+h' ([pscustomobject]@{ action = 'splitPane'; split = 'down'; splitMode = 'duplicate' })),
-    (A 'ctrl+shift+w' 'closePane'),
-    (A 'ctrl+shift+k' ([pscustomobject]@{ action = 'clearBuffer'; clear = 'all' })),
-    (A 'ctrl+shift+left' ([pscustomobject]@{ action = 'moveFocus'; direction = 'left' })),
-    (A 'ctrl+shift+right' ([pscustomobject]@{ action = 'moveFocus'; direction = 'right' })),
-    (A 'ctrl+shift+up' ([pscustomobject]@{ action = 'moveFocus'; direction = 'up' })),
-    (A 'ctrl+shift+down' ([pscustomobject]@{ action = 'moveFocus'; direction = 'down' })),
-    (A 'ctrl+shift+enter' 'toggleFocusMode'),
-    (A 'alt+left' 'unbound'), (A 'alt+right' 'unbound'), (A 'alt+up' 'unbound'), (A 'alt+down' 'unbound'),
-    (A 'alt+shift+d' 'unbound'), (A 'alt+shift+minus' 'unbound'), (A 'alt+shift+plus' 'unbound')
-  )
-  $j | ConvertTo-Json -Depth 20 | Set-Content $sp -Encoding utf8
+  if ($j.profiles -is [System.Array]) {                       # old settings format
+    $j.profiles = @($prof) + @($j.profiles | Where-Object { $_.guid -ne $wtGuid })
+  } else {
+    $existing = @(); if ($j.profiles.PSObject.Properties['list']) { $existing = @($j.profiles.list | Where-Object { $_.guid -ne $wtGuid }) }
+    $j.profiles | Add-Member -NotePropertyName list -NotePropertyValue (@($prof) + @($existing)) -Force
+  }
+  [IO.File]::WriteAllText($sp, ($j | ConvertTo-Json -Depth 20), (New-Object Text.UTF8Encoding $false))
+}
+$wtSettings = Get-ChildItem "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal*\LocalState\settings.json" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+if ($wtSettings) {
+  Write-Host '>> Adding the Nacre profile to Windows Terminal (backup: settings.json.bak-nacre)'
+  Update-WindowsTerminal $wtSettings
 }
 
 # 6) Desktop shortcut -> wezterm-gui.exe (NOT wezterm.exe, which also opens a console window)
 $desk = [Environment]::GetFolderPath('Desktop')
 $ws = New-Object -ComObject WScript.Shell
 $l = $ws.CreateShortcut((Join-Path $desk 'Ubuntu (WSL).lnk'))
-$l.TargetPath = 'C:\Program Files\WezTerm\wezterm-gui.exe'
+$l.TargetPath = $wezGui
 $l.WorkingDirectory = $env:USERPROFILE
 $l.IconLocation = "$ico,0"
 $l.Save()
 
-# 7) Inside WSL: zsh, Node, tmux, dotfiles
+# 7) Inside WSL: zsh, Node.js, tmux, dotfiles (run from the repo's wsl folder, so paths with spaces are fine)
 Write-Host '>> Running WSL setup'
-$wslScript = (Wsl-Text @('-d', $distro, '--cd', '~', '--', 'wslpath', '-a', (Join-Path $repo 'wsl\install.sh').Replace('\', '/'))).Trim()
-wsl.exe -d $distro --cd '~' -- bash $wslScript
+$code = Wsl-Run @('-d', $distro, '--cd', (Join-Path $repo 'wsl'), '--', 'bash', './install.sh')
+if ($code -ne 0) { throw "WSL setup failed (exit code $code). Fix the error above and run this script again." }
 
 Write-Host "`nDone. Open the 'Ubuntu (WSL)' shortcut on your desktop." -ForegroundColor Green
