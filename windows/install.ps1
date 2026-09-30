@@ -65,7 +65,10 @@ if ($distro) {
 
 # 2) A freshly installed distro has only root: create a passwordless user named like the Windows user.
 #    An existing distro with its own user is left untouched.
-$current = (Wsl-Text @('-d', $distro, '--', 'id', '-un')).Trim()
+# --cd /tmp: WSL prints a "chdir ... failed" warning when the current Windows folder cannot be opened
+# (network drive, UNC path, ...), so never start in it. Use the last output line in case a warning still shows up.
+$current = ((Wsl-Text @('-d', $distro, '--cd', '/tmp', '--', 'id', '-un')) -split "`r?`n" | Where-Object { $_.Trim() } | Select-Object -Last 1)
+if ($null -eq $current) { $current = '' } else { $current = $current.Trim() }
 if ($current -notmatch '^[a-z_][a-z0-9_-]*\$?$') {
   throw "Cannot run commands in WSL distro '$distro' (got: $current). Start it once with: wsl -d $distro"
 }
