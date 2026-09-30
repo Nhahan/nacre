@@ -5,7 +5,10 @@ local config = wezterm.config_builder()
 -- Start WSL Ubuntu as the shell (the installer replaces 'Ubuntu' with your distro name)
 config.default_prog = { 'wsl.exe', '-d', 'Ubuntu', '--cd', '~' }
 
--- Font: Meslo LG M (Menlo based, closest to the macOS terminal font); Malgun Gothic covers Korean
+-- Font: Meslo LG M (Menlo based, closest to the macOS terminal font); Malgun Gothic covers Korean.
+-- The font files are read straight from the per-user fonts folder, so this works even when Windows
+-- does not list per-user fonts (it may not after a restart).
+config.font_dirs = { (os.getenv('LOCALAPPDATA') or '') .. '\\Microsoft\\Windows\\Fonts' }
 config.font = wezterm.font_with_fallback { 'Meslo LG M', 'Malgun Gothic' }
 config.font_size = 12.0
 config.adjust_window_size_when_changing_font_size = false  -- keep the window size when the font size changes
@@ -52,8 +55,12 @@ config.initial_rows = 34
 config.scrollback_lines = 100000
 config.enable_scroll_bar = false
 config.audible_bell = 'Disabled'
--- Closing the window kills everything running in WSL, so always ask first
-config.window_close_confirmation = 'AlwaysPrompt'
+-- Closing a tab, a pane or the window never asks for confirmation.
+-- Tabs and panes would still ask while wsl.exe runs in them, so wsl.exe is on the skip list.
+config.window_close_confirmation = 'NeverPrompt'
+config.skip_close_confirmation_for_processes_named = {
+  'wsl.exe', 'wslhost.exe', 'bash', 'sh', 'zsh', 'fish', 'tmux', 'nu', 'cmd.exe', 'pwsh.exe', 'powershell.exe',
+}
 config.check_for_updates = false
 
 ----------------------------------------------------------------------

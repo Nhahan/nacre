@@ -148,6 +148,8 @@ $bw.Close(); $fs.Close()
 
 # 4b) Font: Meslo LG M (Menlo-based, free). Per-user install, no admin needed.
 #     The download is pinned to a commit and verified against a SHA-256 hash.
+#     WezTerm reads the files from this folder directly (font_dirs in wezterm.lua), so it finds the font even
+#     when Windows does not list per-user fonts after a restart. The registration below is for other apps.
 $fontDir   = Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\Fonts'
 $fontReg   = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Fonts'
 $fontUrl   = 'https://raw.githubusercontent.com/andreberg/Meslo-Font/09a431d546d211130352c28eb0466e5d7d5aeaf0/dist/v1.2.1/Meslo%20LG%20v1.2.1.zip'
