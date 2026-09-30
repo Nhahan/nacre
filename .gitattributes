@@ -4,3 +4,4 @@ wsl/zshrc text eol=lf
 wsl/tmux.conf text eol=lf
 *.lua text eol=lf
 *.ps1 text eol=crlf
+*.gif binary

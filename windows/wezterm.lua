@@ -39,7 +39,7 @@ config.inactive_pane_hsb = { saturation = 0.7, brightness = 0.5 }
 config.window_decorations = 'INTEGRATED_BUTTONS|RESIZE'
 config.use_fancy_tab_bar = true
 config.window_frame = {
-  font = wezterm.font 'Segoe UI',
+  font = wezterm.font_with_fallback { 'Segoe UI', 'Malgun Gothic' },
   font_size = 10.0,
   active_titlebar_bg = '#1c1c1c',
   inactive_titlebar_bg = '#1c1c1c',

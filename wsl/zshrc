@@ -59,3 +59,8 @@ open() {
   done
   return 0
 }
+
+# Shift+Enter: 줄바꿈 (여러 줄 입력)
+_nacre_newline() { LBUFFER+=$'\n' }
+zle -N _nacre_newline
+bindkey '^[^M' _nacre_newline
