@@ -70,31 +70,33 @@ local function distinct(infos, key)
   return list
 end
 
--- axis: 'x' (column widths) or 'y' (row heights).
--- Moves every border except the last one to its target size. The remainder cells go to the first
--- columns (sizes differ by at most 1). A border cannot move past a neighbour that has no room left,
--- so the pass is repeated until nothing moves any more.
-local function equalize_axis(window, tab, axis)
-  local pos, size, grow, shrink
-  if axis == 'x' then pos, size, grow, shrink = 'left', 'width', 'Right', 'Left'
-  else pos, size, grow, shrink = 'top', 'height', 'Down', 'Up' end
+local AXIS = {
+  x = { pos = 'left', size = 'width',  grow = 'Right', shrink = 'Left', other_pos = 'top',  other_size = 'height' },
+  y = { pos = 'top',  size = 'height', grow = 'Down',  shrink = 'Up',   other_pos = 'left', other_size = 'width' },
+}
 
-  local infos = tab:panes_with_info()
-  local starts = distinct(infos, pos)
+-- Equalizes one run of panes along an axis (x = widths, y = heights).
+-- select(all_infos) returns the panes that form the run; it is called again before every move because
+-- the layout changes. Every border except the last one is moved to its target size, the remainder cells
+-- go to the first panes (sizes differ by at most 1). A border cannot move past a neighbour that has no
+-- room left, so the pass is repeated until nothing moves any more.
+-- Returns false when the run is not aligned (panes starting at the same position differ in size).
+local function run_axis(window, tab, axis, select)
+  local a = AXIS[axis]
+  local infos = select(tab:panes_with_info())
+  local starts = distinct(infos, a.pos)
   local n = #starts
-  if n < 2 then return end
-  -- Only aligned layouts are handled: every pane that starts at the same position must have the same
-  -- size (rows of panes / columns of panes). Mixed layouts are left alone instead of guessing.
+  if n < 2 then return true end
   local size_at, mn, mx = {}, math.huge, -math.huge
   for _, i in ipairs(infos) do
-    if size_at[i[pos]] and size_at[i[pos]] ~= i[size] then return end
-    size_at[i[pos]] = i[size]
-    mn = math.min(mn, i[size]); mx = math.max(mx, i[size])
+    if size_at[i[a.pos]] and size_at[i[a.pos]] ~= i[a.size] then return false end
+    size_at[i[a.pos]] = i[a.size]
+    mn = math.min(mn, i[a.size]); mx = math.max(mx, i[a.size])
   end
-  if mx - mn <= 1 then return end  -- already equal, do not move anything
+  if mx - mn <= 1 then return true end  -- already equal, do not move anything
   local last_end = 0
   for _, i in ipairs(infos) do
-    last_end = math.max(last_end, i[pos] + i[size])
+    last_end = math.max(last_end, i[a.pos] + i[a.size])
   end
   local avail = last_end - starts[1] - (n - 1)  -- minus one cell per divider
   local base, rem = math.floor(avail / n), avail % n
@@ -102,24 +104,61 @@ local function equalize_axis(window, tab, axis)
   for _ = 1, n + 2 do
     local moved = false
     for c = 1, n - 1 do
-      infos = tab:panes_with_info()
-      starts = distinct(infos, pos)
+      infos = select(tab:panes_with_info())
+      starts = distinct(infos, a.pos)
       local pane_c
       for _, i in ipairs(infos) do
-        if i[pos] == starts[c] then pane_c = i; break end
+        if i[a.pos] == starts[c] then pane_c = i; break end
       end
-      if not pane_c then return end
-      local d = base + ((c <= rem) and 1 or 0) - pane_c[size]
+      if not pane_c then return true end
+      local d = base + ((c <= rem) and 1 or 0) - pane_c[a.size]
       if d ~= 0 then
         moved = true
         pane_c.pane:activate()
-        local dir, amt = grow, d
-        if d < 0 then dir, amt = shrink, -d end
+        local dir, amt = a.grow, d
+        if d < 0 then dir, amt = a.shrink, -d end
         window:perform_action(act.AdjustPaneSize { dir, amt }, pane_c.pane)
       end
     end
     if not moved then break end
   end
+  return true
+end
+
+-- Mixed layouts (e.g. two full-height panes next to one that is split top/bottom) are not aligned as a
+-- whole, so each stack of panes that shares the same column (for y) or row (for x) is equalized on its own.
+local function equalize_stacks(window, tab, axis)
+  local a = AXIS[axis]
+  local groups, order = {}, {}
+  for _, i in ipairs(tab:panes_with_info()) do
+    local key = i[a.other_pos] .. ':' .. i[a.other_size]
+    if not groups[key] then groups[key] = { pos = i[a.other_pos], size = i[a.other_size], n = 0 }; table.insert(order, key) end
+    groups[key].n = groups[key].n + 1
+  end
+  for _, key in ipairs(order) do
+    local g = groups[key]
+    if g.n >= 2 then
+      local function select(all)
+        local out = {}
+        for _, i in ipairs(all) do
+          if i[a.other_pos] == g.pos and i[a.other_size] == g.size then table.insert(out, i) end
+        end
+        table.sort(out, function(p, q) return p[a.pos] < q[a.pos] end)
+        return out
+      end
+      -- only stacks whose panes touch (one divider cell between neighbours)
+      local m, contiguous = select(tab:panes_with_info()), true
+      for k = 2, #m do
+        if m[k][a.pos] ~= m[k - 1][a.pos] + m[k - 1][a.size] + 1 then contiguous = false end
+      end
+      if contiguous then run_axis(window, tab, axis, select) end
+    end
+  end
+end
+
+local function equalize_axis(window, tab, axis)
+  local whole = run_axis(window, tab, axis, function(all) return all end)
+  if not whole then equalize_stacks(window, tab, axis) end
 end
 
 local function equalize_panes(window)
@@ -164,7 +203,15 @@ config.keys = {
   { key = 'w', mods = 'CTRL|SHIFT', action = act.CloseCurrentPane { confirm = false } },
   { key = 't', mods = 'CTRL|SHIFT', action = act.SpawnTab 'CurrentPaneDomain' },
   { key = 'k', mods = 'CTRL|SHIFT', action = act.ClearScrollback 'ScrollbackAndViewport' },
-  { key = 'Enter', mods = 'CTRL|SHIFT', action = act.TogglePaneZoomState },
+  {
+    -- zoom / un-zoom the pane; after un-zooming, equalize again (the window may have been resized meanwhile)
+    key = 'Enter', mods = 'CTRL|SHIFT',
+    action = wezterm.action_callback(function(window, pane)
+      window:perform_action(act.TogglePaneZoomState, pane)
+      equalize_panes(window)  -- does nothing while a pane is zoomed
+      wezterm.time.call_after(0.15, function() pcall(equalize_panes, window) end)
+    end),
+  },
   { key = 'LeftArrow',  mods = 'CTRL|SHIFT', action = act.ActivatePaneDirection 'Left' },
   { key = 'RightArrow', mods = 'CTRL|SHIFT', action = act.ActivatePaneDirection 'Right' },
   { key = 'UpArrow',    mods = 'CTRL|SHIFT', action = act.ActivatePaneDirection 'Up' },
