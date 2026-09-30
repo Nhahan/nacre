@@ -1,49 +1,51 @@
 # Nacre
 
-Windows 11에서 macOS iTerm 같은 터미널 환경을 구성합니다.
+A macOS iTerm-like terminal setup for Windows 11.
 
-## 설치
+Built on WSL (Ubuntu). If WSL is not installed, it is installed for you; if it already is, it is used as is.
 
-PowerShell에서 실행합니다.
+## Install
+
+Run in PowerShell:
 
 ```powershell
 irm https://nhahan.github.io/nacre/install.ps1 | iex
 ```
 
-## 기능
+## Features
 
-- **화면 좌우 분할**: `Ctrl+Shift+V`
+- **Split pane left/right**: `Ctrl+Shift+V`
 
   <img src="assets/split-v.gif" width="640">
 
-- **화면 상하 분할**: `Ctrl+Shift+H`
+- **Split pane top/bottom**: `Ctrl+Shift+H`
 
   <img src="assets/split-h.gif" width="640">
 
-- **분할 화면 이동**: `Ctrl+Shift+방향키`
+- **Move between panes**: `Ctrl+Shift+Arrow keys`
 
   <img src="assets/pane-move.gif" width="640">
 
-- **새 창·분할·닫기 메뉴**: 탭바 `+` 버튼 우클릭
+- **New window / split / close menu**: right-click the tab bar `+` button
 
   <img src="assets/menu.gif" width="640">
 
-- **복사 / 붙여넣기**: `Ctrl+C` / `Ctrl+V`
+- **Copy / Paste**: `Ctrl+C` / `Ctrl+V`
 
   <img src="assets/copy-paste.gif" width="640">
 
-- **글자 크기 조절**: `Ctrl+마우스 휠`
+- **Change font size**: `Ctrl+Mouse wheel`
 
   <img src="assets/font-size.gif" width="640">
 
-- **줄바꿈**: `Shift+Enter`
+- **New line**: `Shift+Enter`
 
   <img src="assets/shift-enter.gif" width="640">
 
-- **탭 이동**: `Alt+1~9`
+- **Switch tabs**: `Alt+1~9`
 
   <img src="assets/tabs.gif" width="640">
 
-- **폴더·파일·URL을 Windows에서 열기**: `open` 명령
+- **Open folders, files, URLs in Windows**: `open` command
 
   <img src="assets/open.gif" width="640">

@@ -1,6 +1,6 @@
-# Windows side setup: WSL2 + Ubuntu, WezTerm, Windows Terminal profile, icon, desktop shortcut.
-# Run in Windows PowerShell (5.1 OK). WSL feature install needs admin and a reboot;
-# if it asks for a reboot, reboot and run this script again.
+# Windows side setup: WSL2 + Ubuntu (only if missing), WezTerm, Windows Terminal profile, icon, desktop shortcut.
+# Run in Windows PowerShell (5.1 OK). If WSL is not installed it is installed first
+# (admin + reboot needed); after the reboot run this script again. An existing Ubuntu is reused as is.
 $ErrorActionPreference = 'Stop'
 $root   = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repo   = Split-Path -Parent $root
@@ -11,25 +11,30 @@ $wtGuid = '{a1b2c3d4-0000-4000-8000-00000000ab01}'
 
 function Wsl-Text { param([string[]]$a) (& wsl.exe @a 2>&1 | Out-String) -replace "`0", '' }
 
-# 1) WSL2 + Ubuntu
-$list = Wsl-Text @('-l', '-q')
-if ($list -notmatch 'Ubuntu') {
-  Write-Host '>> Installing WSL2 + Ubuntu (admin required; reboot may be needed)'
+# 1) WSL2 + Ubuntu: reuse an existing Ubuntu distro, install WSL + Ubuntu only when none exists
+function Find-Distro {
+  (Wsl-Text @('-l', '-q')) -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '^Ubuntu' } | Select-Object -First 1
+}
+$distro = Find-Distro
+if ($distro) {
+  Write-Host ">> WSL distro '$distro' found, skipping WSL install"
+} else {
+  Write-Host '>> WSL/Ubuntu not found, installing (admin required; reboot may be needed)'
   wsl.exe --install -d Ubuntu --no-launch
-  $list = Wsl-Text @('-l', '-q')
-  if ($list -notmatch 'Ubuntu') {
+  $distro = Find-Distro
+  if (-not $distro) {
     Write-Host 'Reboot Windows, then run this script again.' -ForegroundColor Yellow
     exit 0
   }
 }
 
 # 2) Passwordless default user (same name as the Windows user)
-$hasUser = (Wsl-Text @('-d', 'Ubuntu', '-u', 'root', '--', 'id', '-u', $user)) -match '^\d+'
+$hasUser = (Wsl-Text @('-d', $distro, '-u', 'root', '--', 'id', '-u', $user)) -match '^\d+'
 if (-not $hasUser) {
   Write-Host ">> Creating WSL user '$user' (no password, passwordless sudo)"
   $s = "useradd -m -s /bin/bash -G sudo $user && passwd -d $user && echo '$user ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/$user && chmod 440 /etc/sudoers.d/$user && printf '[user]\ndefault=$user\n' > /etc/wsl.conf"
-  wsl.exe -d Ubuntu -u root -- bash -c $s | Out-Null
-  wsl.exe --terminate Ubuntu
+  wsl.exe -d $distro -u root -- bash -c $s | Out-Null
+  wsl.exe --terminate $distro
 }
 
 # 3) WezTerm
@@ -37,7 +42,8 @@ if (-not (Test-Path 'C:\Program Files\WezTerm\wezterm-gui.exe')) {
   Write-Host '>> Installing WezTerm via winget'
   winget install --id wez.wezterm -e --accept-source-agreements --accept-package-agreements
 }
-Copy-Item (Join-Path $root 'wezterm.lua') (Join-Path $env:USERPROFILE '.wezterm.lua') -Force
+$lua = (Get-Content (Join-Path $root 'wezterm.lua') -Raw -Encoding UTF8).Replace("'-d', 'Ubuntu'", "'-d', '$distro'")
+[IO.File]::WriteAllText((Join-Path $env:USERPROFILE '.wezterm.lua'), $lua, (New-Object Text.UTF8Encoding $false))
 
 # 4) Icon (generated locally, no download)
 Add-Type -AssemblyName System.Drawing
@@ -114,7 +120,7 @@ if ($sp) {
   }
   $j.schemes = @($j.schemes | Where-Object name -ne 'iTerm2 Default') + $scheme
   $prof = [pscustomobject]@{
-    guid = $wtGuid; name = 'Ubuntu'; commandline = "wsl.exe -d Ubuntu --cd ~"; icon = $ico
+    guid = $wtGuid; name = 'Ubuntu'; commandline = "wsl.exe -d $distro --cd ~"; icon = $ico
     font = [pscustomobject]@{ face = 'Meslo LG M, Malgun Gothic'; size = 12 }
     colorScheme = 'iTerm2 Default'; cursorShape = 'filledBox'; opacity = 100; useAcrylic = $false
     scrollbarState = 'hidden'; padding = '6, 4, 6, 4'
@@ -154,7 +160,7 @@ $l.Save()
 
 # 7) Inside WSL: zsh, Node, tmux, dotfiles
 Write-Host '>> Running WSL setup'
-$wslScript = (Wsl-Text @('-d', 'Ubuntu', '--cd', '~', '--', 'wslpath', '-a', (Join-Path $repo 'wsl\install.sh').Replace('\', '/'))).Trim()
-wsl.exe -d Ubuntu --cd '~' -- bash $wslScript
+$wslScript = (Wsl-Text @('-d', $distro, '--cd', '~', '--', 'wslpath', '-a', (Join-Path $repo 'wsl\install.sh').Replace('\', '/'))).Trim()
+wsl.exe -d $distro --cd '~' -- bash $wslScript
 
-Write-Host "`nDone. Open the 'Ubuntu (WSL)' shortcut, " -ForegroundColor Green
+Write-Host "`nDone. Open the 'Ubuntu (WSL)' shortcut on your desktop." -ForegroundColor Green
