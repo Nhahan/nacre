@@ -40,8 +40,12 @@ function Find-Distro {
   (Wsl-Text @('-l', '-q')) -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '^Ubuntu' } | Select-Object -First 1
 }
 
+$build = [int](Get-CimInstance Win32_OperatingSystem).BuildNumber
+if ($build -lt 19041) {
+  throw "Windows build $build is too old. Nacre needs Windows 10 version 2004 (build 19041) or later, or Windows 11."
+}
 if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) {
-  throw 'wsl.exe was not found. Nacre needs Windows 10 version 2004 (build 19041) or later, or Windows 11.'
+  throw 'wsl.exe was not found. Run Windows Update, then run this script again.'
 }
 
 # 1) WSL2 + Ubuntu: reuse an existing Ubuntu distro, install WSL + Ubuntu only when none exists
@@ -97,7 +101,7 @@ grep -q '^\[user\]' /etc/wsl.conf 2>/dev/null || printf '\n[user]\ndefault=%s\n'
 # 3) WezTerm
 if (-not (Test-Path $wezGui)) {
   if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-    throw 'winget was not found. Install WezTerm from https://wezterm.org/install/windows.html and run this script again.'
+    throw 'winget was not found. Install "App Installer" from the Microsoft Store (or WezTerm itself from https://wezterm.org/install/windows.html) and run this script again.'
   }
   Write-Host '>> Installing WezTerm via winget'
   winget install --id wez.wezterm -e --accept-source-agreements --accept-package-agreements
