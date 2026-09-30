@@ -85,9 +85,55 @@ local AXIS = {
 -- Equalizes one run of panes along an axis (x = widths, y = heights).
 -- select(all_infos) returns the panes that form the run; it is called again before every move because
 -- the layout changes. Every border except the last one is moved to its target size, the remainder cells
--- go to the first panes (sizes differ by at most 1). A border cannot move past a neighbour that has no
--- room left, so the pass is repeated until nothing moves any more.
+-- go to the first panes (sizes differ by at most 1). The pass is repeated until nothing moves any more.
 -- Returns false when the run is not aligned (panes starting at the same position differ in size).
+
+-- One entry per column (distinct start position): its start, its size and one pane that lies in it.
+local function columns(tab, a, select)
+  local infos = select(tab:panes_with_info())
+  local starts = distinct(infos, a.pos)
+  local sizes, panes = {}, {}
+  for k, s in ipairs(starts) do
+    for _, i in ipairs(infos) do
+      if i[a.pos] == s then sizes[k] = i[a.size]; panes[k] = i.pane; break end
+    end
+  end
+  return sizes, panes, starts
+end
+
+-- Moves the border between column c and column c+1 by d cells (d > 0: to the right / down, column c grows).
+-- AdjustPaneSize moves the divider of the active pane's own parent split, and that is the wanted border
+-- only for some panes of a nested layout. So try the pane on either side, look at where the borders really
+-- are afterwards, and undo a move that hit another border. A border counts as moved correctly when its
+-- position changed in the wanted direction and no earlier (already placed) border changed; later borders
+-- may shift, because a resized group gives or takes its cells at its far end.
+local function move_border(window, tab, a, select, c, d)
+  local _, panes, before = columns(tab, a, select)
+  local dir = (d > 0) and a.grow or a.shrink
+  local back = (d > 0) and a.shrink or a.grow
+  for _, pane in ipairs({ panes[c], panes[c + 1] }) do
+    pane:activate()
+    window:perform_action(act.AdjustPaneSize { dir, math.abs(d) }, pane)
+    local _, _, after = columns(tab, a, select)
+    local m = 0
+    if #after == #before then
+      local earlier_changed = false
+      for k = 2, #before do  -- border k-1 sits at the start of column k
+        local delta = after[k] - before[k]
+        if math.abs(delta) > m then m = math.abs(delta) end
+        if k - 1 < c and delta ~= 0 then earlier_changed = true end
+      end
+      local moved = after[c + 1] - before[c + 1]
+      if ((d > 0 and moved > 0) or (d < 0 and moved < 0)) and not earlier_changed then return true end
+    end
+    if m > 0 then  -- a different border moved: put it back
+      pane:activate()
+      window:perform_action(act.AdjustPaneSize { back, m }, pane)
+    end
+  end
+  return false
+end
+
 local function run_axis(window, tab, axis, select)
   local a = AXIS[axis]
   local infos = select(tab:panes_with_info())
@@ -108,26 +154,18 @@ local function run_axis(window, tab, axis, select)
   local avail = last_end - starts[1] - (n - 1)  -- minus one cell per divider
   local base, rem = math.floor(avail / n), avail % n
 
+  local previous
   for _ = 1, n + 2 do
     local moved = false
     for c = 1, n - 1 do
-      infos = select(tab:panes_with_info())
-      starts = distinct(infos, a.pos)
-      local pane_c
-      for _, i in ipairs(infos) do
-        if i[a.pos] == starts[c] then pane_c = i; break end
-      end
-      if not pane_c then return true end
-      local d = base + ((c <= rem) and 1 or 0) - pane_c[a.size]
-      if d ~= 0 then
-        moved = true
-        pane_c.pane:activate()
-        local dir, amt = a.grow, d
-        if d < 0 then dir, amt = a.shrink, -d end
-        window:perform_action(act.AdjustPaneSize { dir, amt }, pane_c.pane)
-      end
+      local sizes = columns(tab, a, select)
+      local d = base + ((c <= rem) and 1 or 0) - (sizes[c] or 0)
+      if d ~= 0 and move_border(window, tab, a, select, c, d) then moved = true end
     end
     if not moved then break end
+    local key = table.concat((columns(tab, a, select)), ',')
+    if key == previous then break end  -- no progress: stop instead of moving borders back and forth
+    previous = key
   end
   return true
 end
@@ -187,6 +225,31 @@ end
 
 wezterm.on('window-resized', function(window, pane) equalize_panes(window) end)
 
+-- Closing a pane hands its space to a single neighbour, so equalize again afterwards
+local function close_pane_and_equalize()
+  return wezterm.action_callback(function(window, pane)
+    window:perform_action(act.CloseCurrentPane { confirm = false }, pane)
+    equalize_panes(window)
+    -- once more after the new layout has been applied
+    wezterm.time.call_after(0.15, function() pcall(equalize_panes, window) end)
+  end)
+end
+
+-- Panes can also vanish without our key (exit / Ctrl+D in the shell, the tab's X button):
+-- when the pane count of the active tab drops, equalize the remaining panes.
+local pane_counts = {}
+wezterm.on('update-status', function(window, pane)
+  pcall(function()
+    local tab = window:active_tab()
+    if not tab then return end
+    local id = tostring(window:window_id()) .. ':' .. tostring(tab:tab_id())
+    local n = #tab:panes()
+    local prev = pane_counts[id]
+    pane_counts[id] = n
+    if prev and n < prev and n >= 2 then equalize_panes(window) end
+  end)
+end)
+
 -- kind: 'h' = top/bottom, 'v' = left/right
 local function split_and_equalize(kind)
   return wezterm.action_callback(function(window, pane)
@@ -207,7 +270,7 @@ end
 config.keys = {
   { key = 'h', mods = 'CTRL|SHIFT', action = split_and_equalize('h') },  -- split top/bottom
   { key = 'v', mods = 'CTRL|SHIFT', action = split_and_equalize('v') },  -- split left/right
-  { key = 'w', mods = 'CTRL|SHIFT', action = act.CloseCurrentPane { confirm = false } },
+  { key = 'w', mods = 'CTRL|SHIFT', action = close_pane_and_equalize() },
   { key = 't', mods = 'CTRL|SHIFT', action = act.SpawnTab 'CurrentPaneDomain' },
   { key = 'k', mods = 'CTRL|SHIFT', action = act.ClearScrollback 'ScrollbackAndViewport' },
   {
@@ -269,7 +332,7 @@ local menu_actions = {
   tab    = function(w, p) w:perform_action(act.SpawnTab 'CurrentPaneDomain', p) end,
   splith = function(w, p) w:perform_action(split_and_equalize('h'), p) end,
   splitv = function(w, p) w:perform_action(split_and_equalize('v'), p) end,
-  close  = function(w, p) w:perform_action(act.CloseCurrentPane { confirm = false }, p) end,
+  close  = function(w, p) w:perform_action(close_pane_and_equalize(), p) end,
 }
 
 wezterm.on('new-tab-button-click', function(window, pane, button, default_action)
