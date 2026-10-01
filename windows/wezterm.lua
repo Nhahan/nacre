@@ -275,7 +275,7 @@ config.keys = {
   { key = 'k', mods = 'CTRL|SHIFT', action = act.ClearScrollback 'ScrollbackAndViewport' },
   {
     -- zoom / un-zoom the pane; after un-zooming, equalize again (the window may have been resized meanwhile)
-    key = 'Enter', mods = 'CTRL|SHIFT',
+    key = 'z', mods = 'CTRL|SHIFT',
     action = wezterm.action_callback(function(window, pane)
       window:perform_action(act.TogglePaneZoomState, pane)
       equalize_panes(window)  -- does nothing while a pane is zoomed
@@ -286,8 +286,10 @@ config.keys = {
   { key = 'RightArrow', mods = 'CTRL|SHIFT', action = act.ActivatePaneDirection 'Right' },
   { key = 'UpArrow',    mods = 'CTRL|SHIFT', action = act.ActivatePaneDirection 'Up' },
   { key = 'DownArrow',  mods = 'CTRL|SHIFT', action = act.ActivatePaneDirection 'Down' },
-  -- Shift+Enter: new line (ESC + Enter)
-  { key = 'Enter', mods = 'SHIFT', action = act.SendString '\x1b\r' },
+  -- Ctrl+Shift+Enter: new line (ESC + Enter)
+  { key = 'Enter', mods = 'CTRL|SHIFT', action = act.SendString '\x1b\r' },
+  -- Ctrl+Enter is left alone: WezTerm does nothing with it, the running program receives it as is
+  { key = 'Enter', mods = 'CTRL', action = act.DisableDefaultAssignment },
   -- Ctrl+C copies when text is selected, otherwise it interrupts (SIGINT). Ctrl+V pastes.
   {
     key = 'c', mods = 'CTRL',

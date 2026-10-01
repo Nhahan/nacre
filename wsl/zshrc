@@ -24,7 +24,7 @@ bindkey '^[[1;3C' forward-word       # Alt+Right
 bindkey '^[[H' beginning-of-line     # Home
 bindkey '^[[F' end-of-line           # End
 
-# Shift+Enter inserts a newline (the terminal sends ESC+Enter)
+# Ctrl+Shift+Enter inserts a newline (the terminal sends ESC+Enter)
 _nacre_newline() { LBUFFER+=$'\n' }
 zle -N _nacre_newline
 bindkey '^[^M' _nacre_newline

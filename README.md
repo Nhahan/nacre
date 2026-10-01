@@ -38,9 +38,9 @@ irm https://nhahan.github.io/nacre/install.ps1 | iex
 
   <img src="assets/font-size.gif" alt="Change font size with Ctrl+Mouse wheel" width="640">
 
-- **New line**: `Shift+Enter`
+- **New line**: `Ctrl+Shift+Enter`
 
-  <img src="assets/shift-enter.gif" alt="Multi-line input with Shift+Enter" width="640">
+  <img src="assets/shift-enter.gif" alt="Multi-line input with a new line key" width="640">
 
 - **Switch tabs**: `Alt+1~9`
 
